@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Opa</title>
+	<script src="./phaser.min.js" type="text/javascript"></script>
+	<script src="./jquery-1.7.2.js " type="text/javascript"></script>
+</head>
+<body>
+
+</body>
+
+<script type="text/javascript">
+var score = 0;
+var scoreText;
+var GameState = function(game) {
+};
+
+// Load images and sounds
+GameState.prototype.preload = function() {
+    this.game.load.image('ground', 'assets/gfx/ground.png');
+    game.load.spritesheet('player', 'assets/gfx/player.png', 32, 48);
+    this.game.load.image('bullet', 'assets/gfx/bullet.png');
+   this.game.load.image('blocks', 'assets/gfx/blocks.png');
+};
+
+// Setup the example
+GameState.prototype.create = function() {
+    // Set stage background to something sky colored
+    this.game.stage.backgroundColor = 0x4488cc;
+scoreText = game.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000' });
+    // Define movement constants
+    this.MAX_SPEED = 500; // pixels/second
+    this.ACCELERATION = 1500; // pixels/second/second
+    this.DRAG = 600; // pixels/second
+    this.GRAVITY = 2600; // pixels/second/second
+    this.JUMP_SPEED = -1000; // pixels/second (negative y is up)
+
+    this.SHOT_DELAY = 100; // milliseconds (10 bullets/second)
+    this.BULLET_SPEED = 500; // pixels/second
+    this.NUMBER_OF_BULLETS = 3;
+
+    // Create a player sprite
+    this.player = game.add.sprite(32, this.game.height - 150, 'player');
+	this.blocks = game.add.sprite(32, this.game.height /2, 'blocks');
+    //this.gun = this.game.add.sprite(50, this.game.height/2, 'bullet');
+   
+
+
+    stars = game.add.group();
+
+    stars.enableBody = true;
+
+    //  Here we'll create 12 of them evenly spaced apart
+    for (var i = 0; i < 12; i++)
+    {
+        //  Create a star inside of the 'stars' group
+        var star = stars.create(i * 70, 0, 'blocks');
+
+        //  Let gravity do its thing
+        star.body.gravity.y = 6;
+
+        //  This just gives each star a slightly random bounce value
+        star.body.bounce.y = 0.7 + Math.random() * 0.2;
+        this.game.physics.enable(star, Phaser.Physics.ARCADE);
+       
+    }
+
+    this.bulletPool = this.game.add.group();
+    for(var i = 0; i < this.NUMBER_OF_BULLETS; i++) {
+        // Create each bullet and add it to the group.
+        var bullet = this.game.add.sprite(0, 0, 'bullet');
+        this.bulletPool.add(bullet);
+
+        // Set its pivot point to the center of the bullet
+        bullet.anchor.setTo(0.5, 0.5);
+
+        // Enable physics on the bullet
+        this.game.physics.enable(bullet, Phaser.Physics.ARCADE);
+
+        // Set its initial state to "dead".
+        bullet.kill();
+    }
+
+   
+
+	game.physics.arcade.enable(this.player);
+
+	this.player.body.bounce.y = 0.2;
+    this.player.body.gravity.y = 300;
+    this.player.body.collideWorldBounds = true;
+
+
+
+    //  Our two animations, walking left and right.
+    this.player.animations.add('left', [0, 1, 2, 3], 10, true);
+    this.player.animations.add('right', [5, 6, 7, 8], 10, true);
+
+
+    // Enable physics on the player
+   // this.game.physics.enable(this.player, Phaser.Physics.ARCADE);
+
+    // Make player collide with world boundaries so he doesn't leave the stage
+    
+    // Set player minimum and maximum movement speed
+    this.player.body.maxVelocity.setTo(this.MAX_SPEED, this.MAX_SPEED * 10); // x, y
+
+    // Add drag to the player that slows them down when they are not accelerating
+   // this.player.body.drag.setTo(this.DRAG, 0); // x, y
+
+    // Since we're jumping we need gravity
+    game.physics.arcade.gravity.y = this.GRAVITY;
+
+    // Flag to track if the jump button is pressed
+    this.jumping = false;
+
+    // Create some ground for the player to walk on
+    this.ground = this.game.add.group();
+    for(var x = 0; x < this.game.width; x += 32) {
+        // Add the ground blocks, enable physics on each, make them immovable
+        var groundBlock = this.game.add.sprite(x, this.game.height - 32, 'ground');
+        this.game.physics.enable(groundBlock, Phaser.Physics.ARCADE);
+        groundBlock.body.immovable = true;
+        groundBlock.body.allowGravity = false;
+        this.ground.add(groundBlock);
+    }
+
+    // Capture certain keys to prevent their default actions in the browser.
+    // This is only necessary because this is an HTML5 game. Games on other
+    // platforms may not need code like this.
+    this.game.input.keyboard.addKeyCapture([
+        Phaser.Keyboard.LEFT,
+        Phaser.Keyboard.RIGHT,
+        Phaser.Keyboard.UP,
+        Phaser.Keyboard.DOWN
+    ]);
+
+    game.physics.arcade.overlap(this.player, this.blocks, collectStar, null, this);
+    // Just for fun, draw some height markers so we can see how high we're jumping
+    this.drawHeightMarkers();
+};
+function collectStar (player, star) {
+
+    star.kill();
+
+    score += 10;
+    scoreText.text = 'Score: ' + score;
+
+}
+GameState.prototype.shootBullet = function() {
+    // Enforce a short delay between shots by recording
+    // the time that each bullet is shot and testing if
+    // the amount of time since the last shot is more than
+    // the required delay.
+    if (this.lastBulletShotAt === undefined) this.lastBulletShotAt = 0;
+    if (this.game.time.now - this.lastBulletShotAt < this.SHOT_DELAY) return;
+    this.lastBulletShotAt = this.game.time.now;
+
+    // Get a dead bullet from the pool
+    var bullet = this.bulletPool.getFirstDead();
+
+    // If there aren't any bullets available then don't shoot
+    if (bullet === null || bullet === undefined) return;
+
+    // Revive the bullet
+    // This makes the bullet "alive"
+    bullet.revive();
+
+    // Bullets should kill themselves when they leave the world.
+    // Phaser takes care of this for me by setting this flag
+    // but you can do it yourself by killing the bullet if
+    // its x,y coordinates are outside of the world.
+    bullet.checkWorldBounds = true;
+    bullet.outOfBoundsKill = true;
+
+    // Set the bullet position to the gun position.
+    bullet.reset(this.player.x, this.player.y);
+
+    // Shoot it
+    bullet.body.velocity.x = this.BULLET_SPEED;
+    bullet.body.velocity.y = 0;
+};
+
+
+
+// The update() method is called every frame
+GameState.prototype.update = function() {
+    // Collide the player with the ground
+    this.game.physics.arcade.collide(this.player, this.ground);
+	this.game.physics.arcade.collide(this.blocks, this.ground);
+
+    if (this.leftInputIsActive()) {
+        // If the LEFT key is down, set the player velocity to move left
+        this.player.body.acceleration.x = -this.ACCELERATION;
+
+        this.player.animations.play('left');	
+
+    } else if (this.rightInputIsActive()) {
+    	this.player.body.acceleration.x = +this.ACCELERATION;
+        // If the RIGHT key is down, set the player velocity to move right
+        this.player.animations.play('right');
+    } else {
+        this.player.body.acceleration.x = 0;
+    }
+
+    // Set a variable that is true when the player is touching the ground
+    var onTheGround = this.player.body.touching.down;
+
+    // If the player is touching the ground, let him have 2 jumps
+    if (onTheGround) {
+        this.jumps = 2;
+        this.jumping = false;
+    }
+
+    // Jump!
+    if (this.jumps > 0 && this.upInputIsActive(5)) {
+        this.player.body.velocity.y = this.JUMP_SPEED;
+        this.jumping = true;
+    }
+
+    // Reduce the number of available jumps if the jump input is released
+    if (this.jumping && this.upInputReleased()) {
+        this.jumps--;
+        this.jumping = false;
+    }
+
+    if (this.game.input.activePointer.isDown) {
+        this.shootBullet();
+    }
+};
+
+// This function should return true when the player activates the "go left" control
+// In this case, either holding the right arrow or tapping or clicking on the left
+// side of the screen.
+GameState.prototype.leftInputIsActive = function() {
+    var isActive = false;
+
+    isActive = this.input.keyboard.isDown(Phaser.Keyboard.A);
+   
+
+    return isActive;
+};
+
+// This function should return true when the player activates the "go right" control
+// In this case, either holding the right arrow or tapping or clicking on the right
+// side of the screen.
+GameState.prototype.rightInputIsActive = function() {
+    var isActive = false;
+
+    isActive = this.input.keyboard.isDown(Phaser.Keyboard.D);
+   
+    return isActive;
+};
+
+// This function should return true when the player activates the "jump" control
+// In this case, either holding the up arrow or tapping or clicking on the center
+// part of the screen.
+GameState.prototype.upInputIsActive = function(duration) {
+    var isActive = false;
+
+    isActive = this.input.keyboard.downDuration(Phaser.Keyboard.W, duration);
+    
+    return isActive;
+};
+
+// This function returns true when the player releases the "jump" control
+GameState.prototype.upInputReleased = function() {
+    var released = false;
+
+    released = this.input.keyboard.upDuration(Phaser.Keyboard.W);
+   // released |= this.game.input.activePointer.justReleased();
+
+    return released;
+};
+
+var game = new Phaser.Game(848, 450, Phaser.AUTO, 'game');
+game.state.add('game', GameState, true);
+
+</script>
+</html>
